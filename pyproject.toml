@@ -6,7 +6,7 @@ build-backend = "scikit_build_core.build"
 name = "vcl"
 version = "0.1.0"
 requires-python = ">=3.8"
-description = "Demo project with CUDA kernels and Torch ops"
+description = "Visual Cuda Learning"
 authors = [{ name = "LIU-ZVen", email = "zliudr@connect.ust.hk" }]
 dependencies = ["torch", "pybind11", "scikit-build-core"]
 
