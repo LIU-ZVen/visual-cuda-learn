@@ -4,6 +4,8 @@
 
 #include "kernels.h"
 
+#define HALF2(value) (reinterpret_cast<half2*>(&(value))[0])
+
 __global__ void relu_kernel(float* input, float* output, int numel) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < numel) {
@@ -31,18 +33,24 @@ __global__ void relu_f32x4_kernel(float* input, float* output, int numel) {
 // 提升了性能(主要是降低了单位访存延迟).
 __global__ void relu_f16x2_kernel(half* input, half* output, int numel) {
   int idx = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
-  printf(
-      "dispatch relu_f16x2_kernel: blockIdx.x=%d, blockDim.x=%d, "
-      "threadIdx.x=%d, idx=%d\n",
-      blockIdx.x, blockDim.x, threadIdx.x, idx);
+  // printf(
+  //     "dispatch relu_f16x2_kernel: blockIdx.x=%d, blockDim.x=%d, "
+  //     "threadIdx.x=%d, idx=%d\n",
+  //     blockIdx.x, blockDim.x, threadIdx.x, idx);
 
   if (idx < numel) {
-    half2 in = reinterpret_cast<half2*>(input)[idx];
-    half2 out = reinterpret_cast<half2*>(output)[idx];
+    half2 in = HALF2(input[idx]);
+    half2 out = HALF2(output[idx]);
     out.x = __hmax(__float2half(0.0f), in.x);
     out.y = __hmax(__float2half(0.0f), in.y);
-    reinterpret_cast<half2*>(output)[idx] = out;
+    HALF2(output[idx]) = out;
   }
+  // else {
+  //   // 处理奇数元素的情况
+  //   for (int i = idx; i < numel; ++i) {
+  //     output[i] = __hmax(__float2half(0.0f), input[i]);
+  //   }
+  // }
 }
 
 torch::Tensor relu(const torch::Tensor& input) {
@@ -53,6 +61,7 @@ torch::Tensor relu(const torch::Tensor& input) {
 
   at::ScalarType dtype = input.scalar_type();
 
+  // dispatch
   switch (dtype) {
     case at::kFloat:
       relu_f32x4_kernel<<<num_blocks, block_size>>>(
@@ -68,6 +77,10 @@ torch::Tensor relu(const torch::Tensor& input) {
     default:
       TORCH_CHECK(false, "unsupported dtype");
   }
+
+  cudaError_t err = cudaDeviceSynchronize();
+  TORCH_CHECK(err == cudaSuccess,
+              "CUDA kernel failed with error: ", cudaGetErrorString(err));
 
   return output;
 }
